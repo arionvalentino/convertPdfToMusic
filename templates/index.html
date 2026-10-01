@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF ke MusicXML</title>
+  <style>
+    :root { --bg:#f6f5f2; --card:#fff; --text:#1d1d1f; --muted:#6b6b70; --accent:#2f5bd3; --err:#b3261e; --border:#e2e0db; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#151517; --card:#1f1f22; --text:#ececef; --muted:#9a9aa2; --accent:#7d9cff; --err:#ff8a80; --border:#333338; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text);
+           min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px; }
+    main { width:100%; max-width:520px; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:28px; }
+    h1 { margin:0 0 6px; font-size:1.5rem; }
+    p.lead { margin:0 0 22px; color:var(--muted); line-height:1.5; }
+    label.drop { display:block; border:2px dashed var(--border); border-radius:10px; padding:28px 16px; text-align:center;
+                 cursor:pointer; color:var(--muted); transition:border-color .15s; }
+    label.drop:hover, label.drop.over { border-color:var(--accent); }
+    label.drop strong { color:var(--text); display:block; margin-bottom:4px; word-break:break-all; }
+    input[type=file] { display:none; }
+    button { margin-top:16px; width:100%; padding:12px; border:0; border-radius:10px; background:var(--accent); color:#fff;
+             font-size:1rem; font-weight:600; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:wait; }
+    .error { background:color-mix(in srgb, var(--err) 12%, transparent); color:var(--err); padding:12px; border-radius:8px; margin-bottom:16px; }
+    .error pre { white-space:pre-wrap; font-size:.75rem; max-height:160px; overflow:auto; margin:8px 0 0; }
+    .status { margin-top:12px; color:var(--muted); font-size:.9rem; text-align:center; min-height:1.2em; }
+    ul { color:var(--muted); font-size:.85rem; line-height:1.6; padding-left:18px; margin:22px 0 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>PDF → MusicXML</h1>
+  <p class="lead">Unggah partitur PDF, lalu unduh file <code>.mxl</code> yang bisa dibuka di MuseScore, Finale, Sibelius, Dorico, atau Noteflight.</p>
+
+  {% if error %}
+  <div class="error">{{ error }}{% if detail %}<pre>{{ detail }}</pre>{% endif %}</div>
+  {% endif %}
+
+  <form id="form" action="/convert" method="post" enctype="multipart/form-data">
+    <label class="drop" id="drop">
+      <strong id="fname">Klik atau seret file PDF ke sini</strong>
+      Maksimal {{ max_mb }} MB
+      <input type="file" name="file" id="file" accept="application/pdf,.pdf" required>
+    </label>
+    <button type="submit" id="btn">Konversi</button>
+    <div class="status" id="status"></div>
+  </form>
+
+  <ul>
+    <li>Hasil terbaik untuk partitur cetak/digital yang bersih (bukan tulisan tangan atau foto miring).</li>
+    <li>Proses bisa memakan waktu 10 detik hingga beberapa menit tergantung jumlah halaman.</li>
+    <li>Selalu periksa ulang hasilnya di MuseScore — pengenalan otomatis tidak 100% akurat.</li>
+  </ul>
+</main>
+<script>
+  const input = document.getElementById('file'), drop = document.getElementById('drop');
+  const fname = document.getElementById('fname'), form = document.getElementById('form');
+  const btn = document.getElementById('btn'), status = document.getElementById('status');
+  input.addEventListener('change', () => { if (input.files[0]) fname.textContent = input.files[0].name; });
+  ['dragover','dragenter'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(e => drop.addEventListener(e, () => drop.classList.remove('over')));
+  drop.addEventListener('drop', ev => { ev.preventDefault(); input.files = ev.dataTransfer.files; input.dispatchEvent(new Event('change')); });
+
+  // Kirim via fetch agar bisa menampilkan status & langsung mengunduh hasilnya
+  form.addEventListener('submit', async ev => {
+    ev.preventDefault();
+    if (!input.files[0]) return;
+    btn.disabled = true; status.textContent = 'Sedang mengenali not… mohon tunggu.';
+    try {
+      const res = await fetch('/convert', { method: 'POST', body: new FormData(form) });
+      if (!res.ok) { document.open(); document.write(await res.text()); document.close(); return; }
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = m ? decodeURIComponent(m[1]) : 'score.mxl';
+      a.click(); URL.revokeObjectURL(a.href);
+      status.textContent = 'Selesai! File sudah diunduh.';
+    } catch (e) {
+      status.textContent = 'Terjadi kesalahan jaringan: ' + e.message;
+    } finally { btn.disabled = false; }
+  });
+</script>
+</body>
+</html>
